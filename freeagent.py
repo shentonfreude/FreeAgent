@@ -167,19 +167,34 @@ if __name__ == "__main__":
     tasks = fac.get_tasks()
     users = fac.get_users()
     timeslips = fac.get_timeslips("2010-01-01", "2010-12-31")
+    #timeslips = fac.get_timeslips()
+
 
     fields = ['date', 'project', 'task', 'user', 'status', 'hours', 'comment']
     dw = csv.DictWriter(sys.stdout, fields )
     dw.writeheader()            # python2.7 only
 
+    proj_user_hours = {}
+
     for t in timeslips.values():
+        proj = projs[t['project-id']]['name']
+        task = tasks[t['task-id']]['name']
+        user = user = users[t['user-id']]['email']
         d = dict(zip(fields,
                      (t['dated-on'][:10],
-                      projs[t['project-id']]['name'],
-                      tasks[t['task-id']]['name'],
-                      users[t['user-id']]['email'],
+                      proj,
+                      task,
+                      user,
                       t['status'],
                       t['hours'],
                       t['comment'])))
         dw.writerow(d)
 
+        if not proj in proj_user_hours:
+            proj_user_hours[proj] = {}
+        if not user in proj_user_hours[proj]:
+            proj_user_hours[proj][user] = 0
+        proj_user_hours[proj][user] += float(t['hours'])
+
+from pprint import pprint as pp
+pp(proj_user_hours)
