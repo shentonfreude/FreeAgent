@@ -1,0 +1,37 @@
+=======
+ TO DO
+=======
+
+Timeslips
+=========
+
+How can we find out if a timeslip is 'billable' or not?
+
+
+Invoices
+========
+
+Invoices has the basic info including total bill, but under it is an
+itemization of billed items including Services, Hours, Expenses, etc.
+For our purposes of allocating income based on hours worked, we don't
+want to include Expenses.
+
+Data by Project
+===============
+
+We can get a list of all Projects, then for each can ask for:
+
+* /projects/projid/invoices 
+* /projects/projid/timeslips
+
+Unfortunately, we can NOT ask for project timeslips or invoices within
+a date range, just since the dawn of time.
+
+That might make a non-spreadsheet breakdown easier:
+* walk each project
+* tally timeslip hours by person
+* tally invoices, excluding rebilled items
+* report split of invoice by hours
+
+Problem: the above is not date-restricted.
+
