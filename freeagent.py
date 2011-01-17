@@ -1,36 +1,36 @@
 """
- Get bank account list with:
- curl -u user@company.com:PASSWORD
-      -H 'Accept: application/xml' -H 'Content-Type: application/xml'
-      https://company.freeagentcentral.com/bank_accounts
+ Get bank account list with::
 
- POST transaction to bank id:
+   curl -u user@company.com:PASSWORD
+        -H 'Accept: application/xml' -H 'Content-Type: application/xml'
+        https://company.freeagentcentral.com/bank_accounts
 
- curl -v
-         -u user@company.com:PASSWORD
-	  -H 'Accept: application/xml'
-	  -H 'Content-Type: application/xml'
-	  --data @bankacctentry.xml
-	  https://company.freeagentcentral.com/bank_accounts/ACCTNUM/bank_account_entries
+ POST transaction to bank id::
+
+   curl -v
+           -u user@company.com:PASSWORD
+            -H 'Accept: application/xml'
+            -H 'Content-Type: application/xml'
+            --data @bankacctentry.xml
+            https://company.freeagentcentral.com/bank_accounts/ACCTNUM/bank_account_entries
 """
 
-import sys
-#from webob.exc import HTTPFound
-import urllib2
-from base64 import encodestring, decodestring
+import csv
+import datetime
+from base64 import encodestring
 import xml.etree.cElementTree as et
 import logging
-import datetime
-import json
+import sys
+import urllib2
 
 logging.basicConfig(level=logging.DEBUG)
 
-class FareError(Exception): pass
-class NonXMLResponseError(FareError): pass
-class BadAuthError(FareError): pass
-class BadResponse(FareError): pass
+class FreeAgentError(Exception): pass
+class NonXMLResponseError(FreeAgentError): pass
+class BadAuthError(FreeAgentError): pass
+class BadResponse(FreeAgentError): pass
 
-class FreeAgentCentral(object):
+class FreeAgent(object):
     """FreeAgentCental connection and methods.
     """
     def __init__(self, domain, email, password):
@@ -62,6 +62,22 @@ class FreeAgentCentral(object):
             raise NonXMLResponseError, "Not an XML response, check your domain"
         return site
 
+    def _node_dict(self, node):
+        """Return dict from XML node's children.
+        Elements have tag, optional attributes, and text.
+        Return dict of tag and text.
+        DANGER: this ignores attributes so you're hosed if you depend on them.
+        """
+        children = [(child.tag,child.text) for child in node.getiterator()]
+        return dict(children)
+
+    def get_keyed_node(self, urlpath, nodename, key='id'):
+        """Return list of dicts of nodes by URLpath with chosen key.
+        """
+        response = self._get_response(urlpath)
+        root = et.parse(response).getroot()
+        return dict([(n.find(key).text, self._node_dict(n)) for n in root.findall(nodename)])
+
     def get_projects(self, begin=None, end=None):
         """
         CONTACT may be empty :-(
@@ -91,12 +107,7 @@ class FreeAgentCentral(object):
           <updated-at type="datetime">2010-01-02T23:15:44Z</updated-at>
         </project>
         """
-        response = self._get_response("/projects")
-        root = et.parse(response).getroot()
-        projs = {}
-        for p in root.findall('project'):
-            projs[p.find('id').text] = p.find('name').text
-        return projs
+        return self.get_keyed_node("/projects", "project")
 
     def get_tasks(self):
         """
@@ -114,24 +125,12 @@ class FreeAgentCentral(object):
           <status>Active</status>
         </task>
         """
-        response = self._get_response("/tasks")
-        root = et.parse(response).getroot()
-        objs = {}
-        for i in root.findall('task'):
-            objs[i.find('id').text] = i.find('name').text
-        return objs
+        return self.get_keyed_node("/tasks", "task")
 
     def get_users(self):
         """
         """
-        response = self._get_response("/company/users")
-        root = et.parse(response).getroot()
-        objs = {}
-        for i in root.findall('user'):
-            objs[i.find('id').text] = i.find('email').text # first-name, last-name, ...
-        return objs
-
-
+        return self.get_keyed_node("/company/users", "user")
 
     def get_timeslips(self, begin=None, end=None):
         """
@@ -151,41 +150,37 @@ class FreeAgentCentral(object):
             begin = datetime.datetime.now().isoformat()[:5] + "01-01"
         if not end:
             end = datetime.datetime.now().isoformat()[:10]
-        response = self._get_response("/timeslips?view=%s_%s" % (begin, end))
-        return response
+        return self.get_keyed_node("/timeslips?view=%s_%s" % (begin, end), "timeslip")
+
 
 
 if __name__ == "__main__":
     domain = sys.argv[1]
     email = sys.argv[2]
     password = sys.argv[3]
-    fac = FreeAgentCentral(domain, email, password)
+    fac = FreeAgent(domain, email, password)
 
     projs = fac.get_projects()
-    print "PROJS", projs
-
     tasks = fac.get_tasks()
-    print "TASKS", tasks
-
     users = fac.get_users()
-    print "USERS", users
+    timeslips = fac.get_timeslips("2010-01-01", "2010-12-31")
 
-    timesheets = fac.get_timeslips()
-    #from pprint import pprint as pp
-    #pp(  timesheets.readlines())
+    fields = ['date', 'project', 'task', 'user', 'status', 'hours', 'comment']
+    dw = csv.DictWriter(sys.stdout, fields )
+    dw.writeheader()            # python2.7 only
 
-    tree = et.parse(timesheets)
-    root = tree.getroot()
-    print "root:", et.tostring(root)
-    timeslips = root.findall('timeslip')
-    for ts in timeslips:
-        timeslip = {}
-        timeslip['id'] = ts.find('id').text
-        timeslip['date'] = ts.find('dated-on').text
-        timeslip['hours'] = ts.find('hours').text # can it be non-decimal??
-        timeslip['user-id'] = ts.find('user-id').text
-        timeslip['task-id'] = ts.find('task-id').text
-        timeslip['project-id'] = ts.find('project-id').text
-        timeslip['updated-at'] = ts.find('updated-at').text
-        #print "date", ts.find('dated-on').text[:10]
-        print timeslip
+    for t in timeslips.values():
+        try:
+            proj = projs[t['project-id']]['name']
+        except KeyError, e:
+            proj = "MISSING_%s" % t['project-id']
+        d = dict(zip(fields,
+                     (t['dated-on'][:10],
+                      proj,
+                      tasks[t['task-id']]['name'],
+                      users[t['user-id']]['email'],
+                      t['status'],
+                      t['hours'],
+                      t['comment'])))
+        dw.writerow(d)
+
