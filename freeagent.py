@@ -80,9 +80,12 @@ class FreeAgent(object):
 
     def get_projects(self, begin=None, end=None):
         """
-        CONTACT may be empty :-(
-        We can ask for ?view={all,active,copmleted,cancelled,inactive}
-        But generically we want all so we can deref timeslips
+        Get ALL project (including non-active).
+
+        We have to ask for view=all to get non-active projects which
+        may have been charged earlier but no longer used.
+
+        CONTACT may be empty :-( 
 
         <project>
           <id type="integer">25922</id>
@@ -107,7 +110,7 @@ class FreeAgent(object):
           <updated-at type="datetime">2010-01-02T23:15:44Z</updated-at>
         </project>
         """
-        return self.get_keyed_node("/projects", "project")
+        return self.get_keyed_node("/projects?view=all", "project")
 
     def get_tasks(self):
         """
@@ -170,13 +173,9 @@ if __name__ == "__main__":
     dw.writeheader()            # python2.7 only
 
     for t in timeslips.values():
-        try:
-            proj = projs[t['project-id']]['name']
-        except KeyError, e:
-            proj = "MISSING_%s" % t['project-id']
         d = dict(zip(fields,
                      (t['dated-on'][:10],
-                      proj,
+                      projs[t['project-id']]['name'],
                       tasks[t['task-id']]['name'],
                       users[t['user-id']]['email'],
                       t['status'],
