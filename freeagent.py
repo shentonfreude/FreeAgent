@@ -1,26 +1,34 @@
 """
- Get bank account list with::
+See the FreeAgent API docs::
 
-   curl -u user@company.com:PASSWORD
-        -H 'Accept: application/xml' -H 'Content-Type: application/xml'
-        https://company.freeagentcentral.com/bank_accounts
+  http://www.freeagentcentral.com/developers/freeagent-api
 
- POST transaction to bank id::
+Unlike Harvest, FreeAgent only supports XML, no JSON.
 
-   curl -v
-           -u user@company.com:PASSWORD
-            -H 'Accept: application/xml'
-            -H 'Content-Type: application/xml'
-            --data @bankacctentry.xml
-            https://company.freeagentcentral.com/bank_accounts/ACCTNUM/bank_account_entries
+GET bank account list with::
+
+  curl -u user@company.com:PASSWORD
+       -H 'Accept: application/xml' -H 'Content-Type: application/xml'
+       https://company.freeagentcentral.com/bank_accounts
+
+POST transaction to bank id::
+
+  curl -v
+          -u user@company.com:PASSWORD
+           -H 'Accept: application/xml'
+           -H 'Content-Type: application/xml'
+           --data @bankacctentry.xml
+           https://company.freeagentcentral.com/bank_accounts/ACCTNUM/bank_account_entries
+
+Is there really no way to restrict date range on these?
+* /projects/PROJECT_ID/invoices
+* /projects/PROJECT_ID/timeslips
 """
 
-import csv
 import datetime
 from base64 import encodestring
 import xml.etree.cElementTree as et
 import logging
-import sys
 import urllib2
 
 logging.basicConfig(level=logging.DEBUG)
@@ -32,6 +40,10 @@ class BadResponse(FreeAgentError): pass
 
 class FreeAgent(object):
     """FreeAgentCental connection and methods.
+
+    domain: companyname.freeagent.com
+    email:  user@companyname.com
+    password: SqueamishOssifrage
     """
     def __init__(self, domain, email, password):
         self.domain = domain
@@ -39,6 +51,12 @@ class FreeAgent(object):
         self.password = password
         self.fac_url = "https://%s.freeagentcentral.com/" % self.domain
         self.authorization = "Basic %s" % encodestring('%s:%s' % (self.email, self.password))[:-1]
+        self.headers = {
+            'Authorization': self.authorization,
+            'Accept': 'application/xml',
+            'Content-Type': 'application/xml',
+            'User-Agent': 'freeagent.py'
+            }
 
     def _get_response(self, path, data=None):
         """Take auth creds, REST path, POST data, return HTTP response file hanele.
@@ -47,12 +65,7 @@ class FreeAgent(object):
         """
         url = self.fac_url + path
         logging.info("_get_response url=%s" % url)
-        print "# URL=%s" % url
-        request = urllib2.Request(url, data,
-                                  headers={'Accept' : 'application/xml',
-                                           'Content-Type' : 'application/xml'},
-                                  )
-        request.add_header("Authorization", self.authorization)
+        request = urllib2.Request(url, data, self.headers)
         try:
             site = urllib2.urlopen(request)
         except urllib2.HTTPError, e:
@@ -71,8 +84,38 @@ class FreeAgent(object):
         children = [(child.tag,child.text) for child in node.getiterator()]
         return dict(children)
 
+    def _get_default_begin_end(self, begin, end):
+        """Set a sane default date range if values aren't specified.
+        """
+        if not begin:
+            begin = datetime.datetime.now().isoformat()[:5] + "01-01"
+        if not end:
+            end = datetime.datetime.now().isoformat()[:10]
+        return begin, end
+
     def get_keyed_node(self, urlpath, nodename, key='id'):
         """Return list of dicts of nodes by URLpath with chosen key.
+
+        BUGBUG: this doesn't handle hierarchical data!  For example:
+
+        <invoices type="array">
+          <invoice>
+            <id type="integer">100183</id>
+            <net-value type="decimal">24982.4</net-value>
+            <invoice-items type="array">
+              <invoice-item>
+                <item-type>Hours</item-type>
+                <price type="decimal">152.0</price>
+              </invoice-item>
+              <invoice-item>
+                <item-type>Services</item-type>
+                <price type="decimal">24982.4</price>
+              </invoice-item>
+            </invoice-items>
+          </invoice>
+        </invoices>
+
+        We have {'invoice-items': ''} and lose the individual 'invoice-item' elements.
         """
         response = self._get_response(urlpath)
         root = et.parse(response).getroot()
@@ -137,6 +180,15 @@ class FreeAgent(object):
 
     def get_timeslips(self, begin=None, end=None):
         """
+        Return timeslips for all users in specified date range.
+
+        Begin and End default to specify "since the beginning of the year"
+        or something reasonable, TBD.
+
+        The authenticating user must have admin rights to read all users' slips.
+
+        TODO: only want Billable time.
+
         <timeslip>
           <id type="integer">5766839</id>
           <dated-on type="datetime">2011-01-13T00:00:00+00:00</dated-on>
@@ -149,52 +201,68 @@ class FreeAgent(object):
           <status />
         </timeslip>
         """
-        if not begin:
-            begin = datetime.datetime.now().isoformat()[:5] + "01-01"
-        if not end:
-            end = datetime.datetime.now().isoformat()[:10]
+        begin, end = self._get_default_begin_end(begin, end)
         return self.get_keyed_node("/timeslips?view=%s_%s" % (begin, end), "timeslip")
 
+    def get_invoices(self, begin=None, end=None, status="Paid"):
+        """Return invoices in given duration with given status, default=Paid.
+
+        For understanding a worker's profit, We want to tally cost,
+        but exclude billed-back items.  The invoice-item item-type is
+        one of:
+        * Hours
+        * Days
+        * Months
+        * Years
+        * Products
+        * Services
+        * Expenses
+        * Discount
+        * Credit
+        * Comment
 
 
-if __name__ == "__main__":
-    domain = sys.argv[1]
-    email = sys.argv[2]
-    password = sys.argv[3]
-    fac = FreeAgent(domain, email, password)
 
-    projs = fac.get_projects()
-    tasks = fac.get_tasks()
-    users = fac.get_users()
-    timeslips = fac.get_timeslips("2010-01-01", "2010-12-31")
-    #timeslips = fac.get_timeslips()
+        <invoices type="array">
+          <invoice>
+            <id type="integer">100183</id>
+            <company-id type="integer">5194</company-id>
+            <project-id type="integer">25190</project-id>
+            <contact-id type="integer">42386</contact-id>
+            <dated-on type="datetime">2009-01-01T00:00:00Z</dated-on>
+            <due-on type="datetime">2009-01-31T00:00:00Z</due-on>
+            <reference>2008-12</reference>
+            <currency>USD</currency>
+            <exchange-rate>1.0</exchange-rate>
+            <net-value type="decimal">24982.4</net-value>
+            <sales-tax-value type="decimal">0.0</sales-tax-value>
+            <second-sales-tax-value type="decimal">0.0</second-sales-tax-value>
+            <status>Paid</status>
+            <comments>OLD DATA</comments>
+            <discount-percent type="decimal"></discount-percent>
+            <po-reference></po-reference>
+            <omit-header type="boolean">false</omit-header>
+            <payment-terms-in-days type="integer">30</payment-terms-in-days>
+            <written-off-date type="datetime"></written-off-date>
+            <ec-status></ec-status>
+            <invoice-items type="array">
+              <invoice-item>
+                <id type="integer">224835</id>
+                <description>HITSS</description>
+                <project-id type="integer" nil="true"></project-id>
+                <invoice-id type="integer">100183</invoice-id>
+                <item-type>Hours</item-type>
+                <price type="decimal">152.0</price>
+                <quantity type="decimal">0.0</quantity>
+                <sales-tax-rate type="decimal">0.0</sales-tax-rate>
+                <second-sales-tax-rate type="decimal">0.0</second-sales-tax-rate>
+                <nominal-code>001</nominal-code>
+              </invoice-item>
+              ...
+        """
+        begin, end = self._get_default_begin_end(begin, end)
+        timeslips = self.get_keyed_node("/invoices?view=%s_%s" % (begin, end), "invoice")
+        #import pdb;pdb.set_trace()
+        return dict([(k,v) for k,v in timeslips.items() if v['status']==status])
+        # This gets the invoice, but not the entries, which have the hours/services/expense
 
-
-    fields = ['date', 'project', 'task', 'user', 'status', 'hours', 'comment']
-    dw = csv.DictWriter(sys.stdout, fields )
-    dw.writeheader()            # python2.7 only
-
-    proj_user_hours = {}
-
-    for t in timeslips.values():
-        proj = projs[t['project-id']]['name']
-        task = tasks[t['task-id']]['name']
-        user = user = users[t['user-id']]['email']
-        d = dict(zip(fields,
-                     (t['dated-on'][:10],
-                      proj,
-                      task,
-                      user,
-                      t['status'],
-                      t['hours'],
-                      t['comment'])))
-        dw.writerow(d)
-
-        if not proj in proj_user_hours:
-            proj_user_hours[proj] = {}
-        if not user in proj_user_hours[proj]:
-            proj_user_hours[proj][user] = 0
-        proj_user_hours[proj][user] += float(t['hours'])
-
-from pprint import pprint as pp
-pp(proj_user_hours)

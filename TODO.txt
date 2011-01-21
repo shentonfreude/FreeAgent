@@ -2,6 +2,12 @@
  TO DO
 =======
 
+XML-to-Dict
+===========
+
+My XML-to-Dict code isn't recursive so it doesn't convert child nodes.
+This means we lose invoice-items from invoice objects. Bad.
+
 Timeslips
 =========
 
@@ -35,3 +41,8 @@ That might make a non-spreadsheet breakdown easier:
 
 Problem: the above is not date-restricted.
 
+Dates
+=====
+
+Use python datetime objects instead of strings, even though we have to
+pass strings for URL query arguments.
