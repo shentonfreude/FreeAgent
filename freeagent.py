@@ -75,6 +75,31 @@ class FreeAgent(object):
             raise NonXMLResponseError, "Not an XML response, check your domain"
         return site
 
+    def xmldict(self, node):
+        """Return a recursive dict and list of dicts represeting the XML.
+
+        If a node has no children a dict of the tag and text is returned.
+        If it has children, return a dict with the tag and list of recursed children.
+
+        <flintstones>
+          <kids>
+            <kid>pebbles</kid>
+            <kid>bambam</kid>
+          </kids>
+          <car>Courtesy of Fred's two feet</car>
+        </flintstones>
+
+        Results in:
+
+        {'flintstones': [{'kids': [{'kid': 'pebbles'},
+                                   {'kid': 'bambam'}]},
+                         {'car': "Courtesy of Fred's two feet"}]}
+
+        """
+        if len(node) == 0:
+            return {node.tag : node.text}
+        return { node.tag : [ self.xmldict(child) for child in node ]}
+
     def _node_dict(self, node):
         """Return dict from XML node's children.
         Elements have tag, optional attributes, and text.
