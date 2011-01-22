@@ -95,6 +95,17 @@ class FreeAgent(object):
                                    {'kid': 'bambam'}]},
                          {'car': "Courtesy of Fred's two feet"}]}
 
+
+        BUGBUG: shape is not quite right:
+
+            pp(invoice)
+            [{'id': '545203'},
+             {'status': 'Paid'},
+             {'invoice-items': [{'invoice-item': [{'id': '903031'},
+                                                  {'description': 'www1 replacement server on 13 Sep 10'},
+        Should be more like:
+            {id:xxx, status:xxx, invoice-items: [ {...} {...}]                                                   
+                         
         """
         if len(node) == 0:
             return {node.tag : node.text}
@@ -117,6 +128,11 @@ class FreeAgent(object):
         if not end:
             end = datetime.datetime.now().isoformat()[:10]
         return begin, end
+
+    def get_raw_node(self, urlpath, nodename):
+        response = self._get_response(urlpath)
+        root = et.parse(response).getroot()
+        return root
 
     def get_keyed_node(self, urlpath, nodename, key='id'):
         """Return list of dicts of nodes by URLpath with chosen key.
@@ -229,7 +245,7 @@ class FreeAgent(object):
         begin, end = self._get_default_begin_end(begin, end)
         return self.get_keyed_node("/timeslips?view=%s_%s" % (begin, end), "timeslip")
 
-    def get_invoices(self, begin=None, end=None, status="Paid"):
+    def get_invoices_XXX(self, begin=None, end=None, status="Paid"):
         """Return invoices in given duration with given status, default=Paid.
 
         For understanding a worker's profit, We want to tally cost,
@@ -286,8 +302,17 @@ class FreeAgent(object):
               ...
         """
         begin, end = self._get_default_begin_end(begin, end)
-        timeslips = self.get_keyed_node("/invoices?view=%s_%s" % (begin, end), "invoice")
+        invoices = self.get_keyed_node("/invoices?view=%s_%s" % (begin, end), "invoice")
         #import pdb;pdb.set_trace()
-        return dict([(k,v) for k,v in timeslips.items() if v['status']==status])
         # This gets the invoice, but not the entries, which have the hours/services/expense
+        #return dict([(k,v) for k,v in invoices.items() if v['status']==status])
+        # Return raw node for xmldict processing
+        return invoices
+
+    def get_invoices(self, begin=None, end=None, status="Paid"):
+        """Return eTree of invoices in given duration with given status, default=Paid.
+        """
+        begin, end = self._get_default_begin_end(begin, end)
+        invoices = self.get_raw_node("/invoices?view=%s_%s" % (begin, end), "invoice")
+        return invoices
 
