@@ -75,50 +75,18 @@ class FreeAgent(object):
             raise NonXMLResponseError, "Not an XML response, check your domain"
         return site
 
-    def xmldict(self, node):
-        """Return a recursive dict and list of dicts represeting the XML.
-
-        If a node has no children a dict of the tag and text is returned.
-        If it has children, return a dict with the tag and list of recursed children.
-
-        <flintstones>
-          <kids>
-            <kid>pebbles</kid>
-            <kid>bambam</kid>
-          </kids>
-          <car>Courtesy of Fred's two feet</car>
-        </flintstones>
-
-        Results in:
-
-        {'flintstones': [{'kids': [{'kid': 'pebbles'},
-                                   {'kid': 'bambam'}]},
-                         {'car': "Courtesy of Fred's two feet"}]}
-
-
-        BUGBUG: shape is not quite right:
-
-            pp(invoice)
-            [{'id': '545203'},
-             {'status': 'Paid'},
-             {'invoice-items': [{'invoice-item': [{'id': '903031'},
-                                                  {'description': 'www1 replacement server on 13 Sep 10'},
-        Should be more like:
-            {id:xxx, status:xxx, invoice-items: [ {...} {...}]                                                   
-                         
-        """
-        if len(node) == 0:
-            return {node.tag : node.text}
-        return { node.tag : [ self.xmldict(child) for child in node ]}
 
     def _node_dict(self, node):
         """Return dict from XML node's children.
         Elements have tag, optional attributes, and text.
         Return dict of tag and text.
-        DANGER: this ignores attributes so you're hosed if you depend on them.
+        DANGER:
+        * this ignores attributes so you're hosed if you depend on them
+        * doesn't follow recursive structures
         """
-        children = [(child.tag,child.text) for child in node.getiterator()]
+        children = [(child.tag,child.text) for child in node.getchildren()]
         return dict(children)
+
 
     def _get_default_begin_end(self, begin, end):
         """Set a sane default date range if values aren't specified.
@@ -137,30 +105,10 @@ class FreeAgent(object):
     def get_keyed_node(self, urlpath, nodename, key='id'):
         """Return list of dicts of nodes by URLpath with chosen key.
 
-        BUGBUG: this doesn't handle hierarchical data!  For example:
-
-        <invoices type="array">
-          <invoice>
-            <id type="integer">100183</id>
-            <net-value type="decimal">24982.4</net-value>
-            <invoice-items type="array">
-              <invoice-item>
-                <item-type>Hours</item-type>
-                <price type="decimal">152.0</price>
-              </invoice-item>
-              <invoice-item>
-                <item-type>Services</item-type>
-                <price type="decimal">24982.4</price>
-              </invoice-item>
-            </invoice-items>
-          </invoice>
-        </invoices>
-
-        We have {'invoice-items': ''} and lose the individual 'invoice-item' elements.
+        BUGBUG: this doesn't handle hierarchical data like invoices.
         """
-        response = self._get_response(urlpath)
-        root = et.parse(response).getroot()
-        return dict([(n.find(key).text, self._node_dict(n)) for n in root.findall(nodename)])
+        node = self.get_raw_node(urlpath, nodename)
+        return dict([(n.find(key).text, self._node_dict(n)) for n in node.findall(nodename)])
 
     def get_projects(self, begin=None, end=None):
         """
@@ -219,6 +167,11 @@ class FreeAgent(object):
         """
         return self.get_keyed_node("/company/users", "user")
 
+    def get_contacts(self):
+        """
+        """
+        return self.get_keyed_node("/contacts", "contact")
+
     def get_timeslips(self, begin=None, end=None):
         """
         Return timeslips for all users in specified date range.
@@ -245,74 +198,16 @@ class FreeAgent(object):
         begin, end = self._get_default_begin_end(begin, end)
         return self.get_keyed_node("/timeslips?view=%s_%s" % (begin, end), "timeslip")
 
-    def get_invoices_XXX(self, begin=None, end=None, status="Paid"):
-        """Return invoices in given duration with given status, default=Paid.
-
-        For understanding a worker's profit, We want to tally cost,
-        but exclude billed-back items.  The invoice-item item-type is
-        one of:
-        * Hours
-        * Days
-        * Months
-        * Years
-        * Products
-        * Services
-        * Expenses
-        * Discount
-        * Credit
-        * Comment
-
-
-
-        <invoices type="array">
-          <invoice>
-            <id type="integer">100183</id>
-            <company-id type="integer">5194</company-id>
-            <project-id type="integer">25190</project-id>
-            <contact-id type="integer">42386</contact-id>
-            <dated-on type="datetime">2009-01-01T00:00:00Z</dated-on>
-            <due-on type="datetime">2009-01-31T00:00:00Z</due-on>
-            <reference>2008-12</reference>
-            <currency>USD</currency>
-            <exchange-rate>1.0</exchange-rate>
-            <net-value type="decimal">24982.4</net-value>
-            <sales-tax-value type="decimal">0.0</sales-tax-value>
-            <second-sales-tax-value type="decimal">0.0</second-sales-tax-value>
-            <status>Paid</status>
-            <comments>OLD DATA</comments>
-            <discount-percent type="decimal"></discount-percent>
-            <po-reference></po-reference>
-            <omit-header type="boolean">false</omit-header>
-            <payment-terms-in-days type="integer">30</payment-terms-in-days>
-            <written-off-date type="datetime"></written-off-date>
-            <ec-status></ec-status>
-            <invoice-items type="array">
-              <invoice-item>
-                <id type="integer">224835</id>
-                <description>HITSS</description>
-                <project-id type="integer" nil="true"></project-id>
-                <invoice-id type="integer">100183</invoice-id>
-                <item-type>Hours</item-type>
-                <price type="decimal">152.0</price>
-                <quantity type="decimal">0.0</quantity>
-                <sales-tax-rate type="decimal">0.0</sales-tax-rate>
-                <second-sales-tax-rate type="decimal">0.0</second-sales-tax-rate>
-                <nominal-code>001</nominal-code>
-              </invoice-item>
-              ...
-        """
-        begin, end = self._get_default_begin_end(begin, end)
-        invoices = self.get_keyed_node("/invoices?view=%s_%s" % (begin, end), "invoice")
-        #import pdb;pdb.set_trace()
-        # This gets the invoice, but not the entries, which have the hours/services/expense
-        #return dict([(k,v) for k,v in invoices.items() if v['status']==status])
-        # Return raw node for xmldict processing
-        return invoices
 
     def get_invoices(self, begin=None, end=None, status="Paid"):
-        """Return eTree of invoices in given duration with given status, default=Paid.
+        """Return list of invoices with nested dict of invoice-items. NOT KEYED BY ID YET.
         """
+        invoices = []
         begin, end = self._get_default_begin_end(begin, end)
-        invoices = self.get_raw_node("/invoices?view=%s_%s" % (begin, end), "invoice")
+        for invoice_node in self.get_raw_node("/invoices?view=%s_%s" % (begin, end), "invoice"):
+            invdict = self._node_dict(invoice_node)
+            items = invoice_node.find("invoice-items")
+            invdict["invoice-items"] = [ self._node_dict(item) for item in items ]
+            invoices.append(invdict)
         return invoices
 

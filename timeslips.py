@@ -7,11 +7,11 @@ email = sys.argv[2]
 password = sys.argv[3]
 fac = FreeAgent(domain, email, password)
 
-projs = fac.get_projects()
-tasks = fac.get_tasks()
-users = fac.get_users()
-timeslips = fac.get_timeslips("2011-01-01", "2011-12-31")
-#timeslips = fac.get_timeslips()
+projs = fa.get_projects()
+tasks = fa.get_tasks()
+users = fa.get_users()
+timeslips = fa.get_timeslips("2011-01-01", "2011-12-31")
+#timeslips = fa.get_timeslips()
 
 
 fields = ['date', 'project', 'task', 'user', 'status', 'hours', 'comment']
