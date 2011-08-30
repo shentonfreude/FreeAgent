@@ -72,8 +72,30 @@ class FreeAgent(object):
             # XXX wrongly catches 404=NotFound, 400=BadRequest too
             raise BadAuthError, "Authentication failed, check your username and password, ensure Settings->API is enabled (%s)" % e
         if not site.headers['content-type'].startswith("application/xml"):
-            raise NonXMLResponseError, "Not an XML response, check your domain"
+            raise NonXMLResponseError, "Non XML response content-type='%s', check your domain" % (
+                site.headers['content-type'],)
         return site
+
+    # TODO: add knob to allow non-xml response on request-basis for e.g., application/pdf
+    # Then we can use the above instead of the nearly identical below.
+
+    def _get_response_noheaders(self, path, data=None):
+        """Take auth creds, REST path, return HTTP response file hanele.
+        We use this for getting PDF of invoice.
+        """
+        url = self.fac_url + path
+        logging.info("_get_response_noheaders url=%s" % url)
+        auth_headers = {
+            'Authorization': self.authorization,
+            }
+        request = urllib2.Request(url, data, auth_headers)
+        try:
+            site = urllib2.urlopen(request)
+        except urllib2.HTTPError, e:
+            # XXX wrongly catches 404=NotFound, 400=BadRequest too
+            raise BadAuthError, "Authentication failed, check your username and password, ensure Settings->API is enabled (%s)" % e
+        return site
+
 
 
     def _node_dict(self, node):
