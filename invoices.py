@@ -32,21 +32,23 @@ for inv in invs:
     proj = projs[inv['project-id']]['name']
     cont = conts[inv['contact-id']]['organisation-name']
     net_value = float(inv['net-value'])
-    proj_netval[proj] = proj_netval.get(proj, 0) + net_value
-    proj_income[proj] = proj_income.get(proj, 0) + net_value
+    status = inv['status']
+    if status == "Paid":
+        proj_netval[proj] = proj_netval.get(proj, 0) + net_value
+        proj_income[proj] = proj_income.get(proj, 0) + net_value
 
     for item in inv['invoice-items']:
-        if item['item-type'] == "Expenses":
+        if status == "Paid" and item['item-type'] == "Expenses":
             proj_income[proj] -= float(item['price'])
         d = dict(zip(fields,
                      (inv['reference'], inv['dated-on'][:10],
                       cont, proj,
-                      inv['status'], net_value,
+                      status, net_value,
                       item['price'], item['item-type'], item['quantity'], item['description'])))
         dw.writerow(d)
 
 for p in sorted(proj_income):
-    logging.info("%-24s %8.2f (%8.2f with expenses)" % (p, proj_income[p], proj_netval[p]))
+    logging.info("%-24s %10.2f (%10.2f with expenses)" % (p, proj_income[p], proj_netval[p]))
 
 
 
