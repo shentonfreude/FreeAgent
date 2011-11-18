@@ -23,6 +23,48 @@ POST transaction to bank id::
 Is there really no way to restrict date range on these?
 * /projects/PROJECT_ID/invoices
 * /projects/PROJECT_ID/timeslips
+
+Example using V2 API and JSON format output. At this time, the API has
+a dummy company so the company and username are not used by FreeAgent
+server. I'm hiding our OAuth token here::
+
+  >>>fa = freeagent.FreeAgent('COMPANY', 'USER@DOMAIN', 'OAuthBearerToken', dataformat='json', api="v2")
+
+  >> resp = fa._get_response('/company')
+  INFO:root:_get_response url=https://api.sandbox.freeagent.com/v2/company
+  INFO:root:_get_response headers={'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': 'Bearer OAuthBearerToken', 'User-Agent': 'https://github.com/shentonfreude/FreeAgent'}
+  >>> print resp.readlines()
+  ['{"company":{"type":"UkLimitedCompany","currency":"GBP","mileage_units":"miles"}}']
+
+  >>> resp = fa._get_response('/users')
+  INFO:root:_get_response url=https://api.sandbox.freeagent.com/v2//users
+  INFO:root:_get_response headers={'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': 'Bearer LxrSCsYl', 'User-Agent': 'https://github.com/shentonfreude/FreeAgent'}
+  >>> resp.readlines()
+  ['{"users":[{"path":"/v2/users/112","first_name":"Chris","last_name":"Shenton","email":"chris@koansys.com","role":"Director","permission_level":8,"opening_mileage":0,"updated_at":"2011-11-18T10:20:27Z","created_at":"2011-11-18T10:20:27Z"}]}']
+
+V2 Resources:
+* /company
+* /invoices 
+* /users    [/:id] [/me]
+* /timeslips [:id]
+* /tasks     [:id] [?project=:project]  !!!!
+* /projects  [:id]
+* /contacts  [:id]
+
+Paging:
+* GET /v2/RESOURCE?page=5&per_page=50]; see returned 'Link' header (prev,next,first,last)
+
+To get started, I need to:
+1. create a contact
+2. create a project with that contact
+3. create a task with that project
+4. create a timeslip with that task
+
+
+I should create Class-level RESTful CRUD methods: get (one, multiple),
+create, update, delete. They'd use GET, POST, PUT, DELETE.
+Resource-type-specific methods would require mandatory parameters and
+allow option ones.
 """
 
 import datetime
@@ -34,6 +76,7 @@ import urllib2
 logging.basicConfig(level=logging.DEBUG)
 
 class FreeAgentError(Exception): pass
+class BadResponseFormatError(FreeAgentError): pass
 class NonXMLResponseError(FreeAgentError): pass
 class BadAuthError(FreeAgentError): pass
 class BadResponse(FreeAgentError): pass
@@ -45,22 +88,31 @@ class FreeAgent(object):
     email:  user@companyname.com
     password: SqueamishOssifrage
     """
-    def __init__(self, domain, email, password, dataformat="xml", authformat="basic"):
+    def __init__(self, domain, email, password,
+                 dataformat="xml", authformat="basic", api="v1"):
         if dataformat not in ("xml", "json"):
             raise FreeAgentError("format must be xml or json")
         if authformat not in ("basic", "oauth"):
             raise FreeAgentError("authformat must be basic or oauth")
+        if api not in ("v1", "v2"):
+            raise FreeAgentError("api must be v1 or v2")
         self.domain = domain
         self.email = email
         self.password = password
-        self.fac_url = "https://%s.freeagent.com/" % self.domain
-        self.authorization = "Basic %s" % encodestring('%s:%s' % (self.email, self.password))[:-1]
+        self.dataformat = dataformat
+        if api == "v1":
+            self.fac_url = "https://%s.freeagent.com/" % self.domain
+            self.authorization = "Basic %s" % encodestring('%s:%s' % (self.email, self.password))[:-1]
+        else:
+            self.fac_url = "https://api.sandbox.freeagent.com/v2/" # company
+            self.authorization = "Bearer %s" % password
         self.headers = {
             'Authorization': self.authorization,
             'Accept': 'application/%s' % dataformat,
             'Content-Type': 'application/%s' % dataformat,
             'User-Agent': 'https://github.com/shentonfreude/FreeAgent'
             }
+        logging.info("__init__ headers=%s" % self.headers)
 
     def _get_response(self, path, data=None):
         """Take auth creds, REST path, POST data, return HTTP response file hanele.
@@ -79,8 +131,8 @@ class FreeAgent(object):
                     "ensure Settings->API is enabled (%s)" % e
             else:
                 raise BadResponse, "Bad Response from FreeAgent: %s" % e
-        if not site.headers['content-type'].startswith("application/xml"):
-            raise NonXMLResponseError, "Non XML response content-type='%s', check your domain" % (
+        if not site.headers['content-type'].startswith("application/%s" % self.dataformat):
+            raise BadResponseFormatError, "Non XML/JSON response content-type='%s', check your domain" % (
                 site.headers['content-type'],)
         return site
 
