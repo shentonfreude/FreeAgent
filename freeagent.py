@@ -1,7 +1,7 @@
 """
 See the FreeAgent API docs::
 
-  http://www.freeagentcentral.com/developers/freeagent-api
+  http://www.freeagent.com/developers/freeagent-api
 
 Unlike Harvest, FreeAgent only supports XML, no JSON.
 
@@ -9,7 +9,7 @@ GET bank account list with::
 
   curl -u user@company.com:PASSWORD
        -H 'Accept: application/xml' -H 'Content-Type: application/xml'
-       https://company.freeagentcentral.com/bank_accounts
+       https://company.freeagent.com/bank_accounts
 
 POST transaction to bank id::
 
@@ -18,7 +18,7 @@ POST transaction to bank id::
            -H 'Accept: application/xml'
            -H 'Content-Type: application/xml'
            --data @bankacctentry.xml
-           https://company.freeagentcentral.com/bank_accounts/ACCTNUM/bank_account_entries
+           https://company.freeagent.com/bank_accounts/ACCTNUM/bank_account_entries
 
 Is there really no way to restrict date range on these?
 * /projects/PROJECT_ID/invoices
@@ -41,21 +41,25 @@ class BadResponse(FreeAgentError): pass
 class FreeAgent(object):
     """FreeAgentCental connection and methods.
 
-    domain: companyname.freeagent.com
+    domain: companyname
     email:  user@companyname.com
     password: SqueamishOssifrage
     """
-    def __init__(self, domain, email, password):
+    def __init__(self, domain, email, password, dataformat="xml", authformat="basic"):
+        if dataformat not in ("xml", "json"):
+            raise FreeAgentError("format must be xml or json")
+        if authformat not in ("basic", "oauth"):
+            raise FreeAgentError("authformat must be basic or oauth")
         self.domain = domain
         self.email = email
         self.password = password
-        self.fac_url = "https://%s.freeagentcentral.com/" % self.domain
+        self.fac_url = "https://%s.freeagent.com/" % self.domain
         self.authorization = "Basic %s" % encodestring('%s:%s' % (self.email, self.password))[:-1]
         self.headers = {
             'Authorization': self.authorization,
-            'Accept': 'application/xml',
-            'Content-Type': 'application/xml',
-            'User-Agent': 'freeagent.py'
+            'Accept': 'application/%s' % dataformat,
+            'Content-Type': 'application/%s' % dataformat,
+            'User-Agent': 'https://github.com/shentonfreude/FreeAgent'
             }
 
     def _get_response(self, path, data=None):
@@ -69,15 +73,19 @@ class FreeAgent(object):
         try:
             site = urllib2.urlopen(request)
         except urllib2.HTTPError, e:
-            # XXX wrongly catches 404=NotFound, 400=BadRequest too
-            raise BadAuthError, "Authentication failed, check your username and password, ensure Settings->API is enabled (%s)" % e
+            if e.getcode() == 401:
+                raise BadAuthError, \
+                    "Authentication failed, check username/password, " \
+                    "ensure Settings->API is enabled (%s)" % e
+            else:
+                raise BadResponse, "Bad Response from FreeAgent: %s" % e
         if not site.headers['content-type'].startswith("application/xml"):
             raise NonXMLResponseError, "Non XML response content-type='%s', check your domain" % (
                 site.headers['content-type'],)
         return site
 
-    # TODO: add knob to allow non-xml response on request-basis for e.g., application/pdf
-    # Then we can use the above instead of the nearly identical below.
+    # TODO: This is a dupe of _get_response almost, unify them.
+    # Add knob to allow non-xml response on request-basis for e.g., application/pdf
 
     def _get_response_noheaders(self, path, data=None):
         """Take auth creds, REST path, return HTTP response file hanele.
@@ -92,11 +100,8 @@ class FreeAgent(object):
         try:
             site = urllib2.urlopen(request)
         except urllib2.HTTPError, e:
-            # XXX wrongly catches 404=NotFound, 400=BadRequest too
-            raise BadAuthError, "Authentication failed, check your username and password, ensure Settings->API is enabled (%s)" % e
+            raise BadResponse, "Bad Response from FreeAgent: %s" % e
         return site
-
-
 
     def _node_dict(self, node):
         """Return dict from XML node's children.
