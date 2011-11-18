@@ -3,7 +3,7 @@ See the FreeAgent API docs::
 
   http://www.freeagent.com/developers/freeagent-api
 
-Unlike Harvest, FreeAgent only supports XML, no JSON.
+Unlike Harvest, FreeAgent API v1 only supports XML, no JSON.
 
 GET bank account list with::
 
@@ -24,32 +24,33 @@ Is there really no way to restrict date range on these?
 * /projects/PROJECT_ID/invoices
 * /projects/PROJECT_ID/timeslips
 
-Example using V2 API and JSON format output. At this time, the API has
-a dummy company so the company and username are not used by FreeAgent
-server. I'm hiding our OAuth token here::
+Example using upcoming v2 API and JSON format output. At this time,
+the API has a dummy company so the company and username are not used
+by FreeAgent server. Per FreeAgent's request, I'm hiding the actual
+URL and our OAuth token here::
 
-  >>>fa = freeagent.FreeAgent('COMPANY', 'USER@DOMAIN', 'OAuthBearerToken', dataformat='json', api="v2")
+  >>>fa = freeagent.FreeAgent('COMPANY', 'USER@DOMAIN', 'OAuthBearerToken', dataformat='json', api="v2", fac_url="DONT_SHOW_V2_HERE_YET)
+  INFO:root:__init__ headers={'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': 'Bearer OAuthBearerToken', 'User-Agent': 'https://github.com/shentonfreude/FreeAgent'}
 
   >> resp = fa._get_response('/company')
-  INFO:root:_get_response url=https://api.sandbox.freeagent.com/v2/company
-  INFO:root:_get_response headers={'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': 'Bearer OAuthBearerToken', 'User-Agent': 'https://github.com/shentonfreude/FreeAgent'}
+  INFO:root:_get_response url=https://v2_fake_host.freeagent.com/v2/company
   >>> print resp.readlines()
   ['{"company":{"type":"UkLimitedCompany","currency":"GBP","mileage_units":"miles"}}']
 
   >>> resp = fa._get_response('/users')
-  INFO:root:_get_response url=https://api.sandbox.freeagent.com/v2//users
-  INFO:root:_get_response headers={'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': 'Bearer LxrSCsYl', 'User-Agent': 'https://github.com/shentonfreude/FreeAgent'}
+  INFO:root:_get_response url=https://v2_fake_host.freeagent.com/v2//users
   >>> resp.readlines()
   ['{"users":[{"path":"/v2/users/112","first_name":"Chris","last_name":"Shenton","email":"chris@koansys.com","role":"Director","permission_level":8,"opening_mileage":0,"updated_at":"2011-11-18T10:20:27Z","created_at":"2011-11-18T10:20:27Z"}]}']
 
-V2 Resources:
+Resources:
 * /company
-* /invoices 
+* /invoices
 * /users    [/:id] [/me]
 * /timeslips [:id]
 * /tasks     [:id] [?project=:project]  !!!!
 * /projects  [:id]
 * /contacts  [:id]
+...
 
 Paging:
 * GET /v2/RESOURCE?page=5&per_page=50]; see returned 'Link' header (prev,next,first,last)
@@ -59,7 +60,6 @@ To get started, I need to:
 2. create a project with that contact
 3. create a task with that project
 4. create a timeslip with that task
-
 
 I should create Class-level RESTful CRUD methods: get (one, multiple),
 create, update, delete. They'd use GET, POST, PUT, DELETE.
@@ -89,7 +89,8 @@ class FreeAgent(object):
     password: SqueamishOssifrage
     """
     def __init__(self, domain, email, password,
-                 dataformat="xml", authformat="basic", api="v1"):
+                 dataformat="xml", authformat="basic", api="v1",
+                 fac_url="https://%s.freeagent.com"):
         if dataformat not in ("xml", "json"):
             raise FreeAgentError("format must be xml or json")
         if authformat not in ("basic", "oauth"):
@@ -101,10 +102,10 @@ class FreeAgent(object):
         self.password = password
         self.dataformat = dataformat
         if api == "v1":
-            self.fac_url = "https://%s.freeagent.com/" % self.domain
+            self.fac_url = fac_url % self.domain
             self.authorization = "Basic %s" % encodestring('%s:%s' % (self.email, self.password))[:-1]
         else:
-            self.fac_url = "https://api.sandbox.freeagent.com/v2/" # company
+            self.fac_url = fac_url # must pass this in, don't show in GitHub yet
             self.authorization = "Bearer %s" % password
         self.headers = {
             'Authorization': self.authorization,
