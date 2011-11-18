@@ -1,0 +1,64 @@
+=====================
+ QUESTIONS on V2 API
+=====================
+
+JSON
+====
+
+Happy to see the keys in the JSON are code-friendly names (e.g., lowercase, no spaces or dashes).
+
+
+Users
+=====
+
+Each user should also specify their unique ID so we don't have to parse it from the 'path'::
+
+  >>> resp = fa._get_response('/users')
+  >>> resp.readlines()
+  ['{"users":[{"path":"/v2/users/112","first_name":"Chris","last_name":"Shenton","email":"chris@koansys.com","role":"Director","permission_level":8,"opening_mileage":0,"updated_at":"2011-11-18T10:20:27Z","created_at":"2011-11-18T10:20:27Z"}]}']
+
+Especially important when getting 'me', we can't determine an ID or canonical path::
+
+  >>> print fa._get_response('/users/me').readlines()
+  ['{"user":{"first_name":"Chris","last_name":"Shenton","email":"chris@koansys.com","role":"Director","permission_level":8,"opening_mileage":0,"updated_at":"2011-11-18T10:20:27Z","created_at":"2011-11-18T10:20:27Z"}}']
+
+Timeslips
+=========
+
+Again, I'd like a distinct 'id' returned so I don't have to parse
+'path' to get the resource ID for subsequent access.
+
+Getting a single timeslip doesn't return 'path'.  I'd like it to
+provide 'path' (and an 'id') for symmetry, so code can look for these
+regardless of if the original query was for all or a single timeslip.
+It would eliminate the need for special cases in caller code.
+
+Creating a timeslip response includes all attributes supplied except 'comment'?
+
+Update a timeslip says input includes "task.project"; can you add an
+example to the docs?
+
+Can you give an example of how to use the `from_date` and `to_date` in a query?
+
+Tasks
+=====
+
+Request looks like::
+
+  GET /v2/tasks?project=:project
+
+Do we really have to specify a project? Can we not get a list of all
+our tasks -- which include a 'project' attribute -- without having to
+first get a list of all projects, then iterating over each? This is
+the same behavior as in V1 API.  I'd like to be able to::
+
+  GET /v2/tasks
+
+And get all my tasks.
+
+Expenses
+========
+
+Would like a way to retrieve the set of valid 'expense_type'.
+
+
